@@ -1,9 +1,28 @@
 <!DOCTYPE html>
-<html>
-<head><title>Webserv</title></head>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <title>Webserv Interattivo</title>
+    <link rel="stylesheet" href="/styles.css">
+</head>
 <body>
-<h1>Cinepanettone!</h1>
+    <h1>CINEPANETTONE!</h1>
+    
+    <!-- Immagine caricata -->
+    <img src="/image.png" alt="Cinepanettone Image" />
+    
+    <!-- Form per inviare una richiesta POST -->
+    <form action="/submit" method="POST">
+        <label for="inputText">Inserisci qualcosa:</label>
+        <input type="text" id="inputText" name="inputText" required>
+        <button type="submit">Invia</button>
+    </form>
+    
+    <!-- Pulsante per inviare una richiesta GET -->
+    <button onclick="window.location.href='/example'">Vai all'esempio</button>
+    
+    <script>
+        console.log("Pagina interattiva caricata");
+    </script>
 </body>
 </html>
-<link rel="stylesheet" href="/styles.css">
-<img src="/image.png" alt="Example Image">

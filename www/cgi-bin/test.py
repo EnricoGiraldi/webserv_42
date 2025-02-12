@@ -1,13 +1,13 @@
 #!/usr/bin/env python3
 
-# Import CGI module
+# Importa il modulo cgi (se necessario per eventuali elaborazioni dei dati inviati dal client)
 import cgi
 
-# Print the HTTP header
+# Stampa l'header HTTP: specifica il Content-Type e una riga vuota per separare gli header dal corpo.
 print("Content-Type: text/html")
-print("")  # Blank line to separate headers from the body
+print("")  # Linea vuota obbligatoria
 
-# Print the HTML content
+# Stampa il contenuto HTML della risposta
 print("<html>")
 print("<head><title>Test CGI</title></head>")
 print("<body>")
