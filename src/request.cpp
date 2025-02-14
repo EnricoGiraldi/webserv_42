@@ -2,11 +2,36 @@
 #include <sstream>
 #include <algorithm>
 #include <cctype>
+#include <stdlib.h> // Per strtoul
 
+// Funzione helper per effettuare il trim
 static std::string trim(const std::string& s) {
     size_t start = s.find_first_not_of(" \t\r\n");
     size_t end = s.find_last_not_of(" \t\r\n");
     return (start == std::string::npos) ? "" : s.substr(start, end - start + 1);
+}
+
+// Funzione helper per decodificare un corpo in formato "chunked"
+static std::string decodeChunkedBody(const std::string &chunked) {
+    std::istringstream stream(chunked);
+    std::string decoded;
+    std::string line;
+    while (std::getline(stream, line)) {
+        line = trim(line);
+        if (line.empty()) continue;
+        // Dimensione del chunk in esadecimale
+        size_t chunkSize = strtoul(line.c_str(), NULL, 16);
+        if (chunkSize == 0) {
+            break;
+        }
+        char* buffer = new char[chunkSize];
+        stream.read(buffer, chunkSize);
+        decoded.append(buffer, chunkSize);
+        delete[] buffer;
+        // Salta il CRLF finale
+        std::getline(stream, line);
+    }
+    return decoded;
 }
 
 Request::Request(const std::string& rawRequest) {
@@ -44,10 +69,16 @@ void Request::parseRequest(const std::string& rawRequest) {
         }
     }
 
-    // Il corpo (body) della richiesta (se presente)
+    // Parsing del corpo
     std::ostringstream bodyStream;
     bodyStream << requestStream.rdbuf();
     _body = bodyStream.str();
+
+    // Se è presente Transfer-Encoding: chunked, decodifica il corpo
+    if (_headers.find("Transfer-Encoding") != _headers.end() &&
+        _headers["Transfer-Encoding"] == "chunked") {
+        _body = decodeChunkedBody(_body);
+    }
 }
 
 std::string Request::getMethod() const {
