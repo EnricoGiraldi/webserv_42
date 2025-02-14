@@ -5,10 +5,10 @@
 
 class ErrorHandler {
 public:
-    ErrorHandler() {}
-    ~ErrorHandler() {}
+    ErrorHandler();
+    ~ErrorHandler();
 
-    // Genera una risposta di errore formattata in base al codice di stato e al messaggio fornito
+    // Genera una pagina HTML d'errore basata sul codice e messaggio
     std::string generateErrorResponse(int code, const std::string& message);
 };
 

@@ -4376,3 +4376,19 @@ Accept-Language: en-US,en;q=0.9
 
 
 
+Received request:
+GET /dir/ HTTP/1.1
+Host: localhost:8080
+User-Agent: curl/7.81.0
+Accept: */*
+
+
+
+Received request:
+GET /dir/ HTTP/1.1
+Host: localhost:8080
+User-Agent: curl/7.81.0
+Accept: */*
+
+
+

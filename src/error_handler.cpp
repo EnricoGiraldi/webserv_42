@@ -1,7 +1,9 @@
 #include "error_handler.hpp"
 #include <sstream>
 
-// Genera una risposta HTML di errore, utilizzata per restituire una pagina di errore al client.
+ErrorHandler::ErrorHandler() {}
+ErrorHandler::~ErrorHandler() {}
+
 std::string ErrorHandler::generateErrorResponse(int code, const std::string& message) {
     std::ostringstream oss;
     oss << "<html><body>"

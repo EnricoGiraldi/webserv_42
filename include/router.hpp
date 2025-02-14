@@ -6,19 +6,16 @@
 
 class Router {
 public:
-    // Tipo per la funzione handler: una funzione che restituisce std::string e non riceve parametri.
-    typedef std::string (*HandlerFunction)();
+    // Funzione handler: restituisce una stringa e non riceve parametri
+    typedef std::string (*HandlerFunction)(void);
 
     Router();
     ~Router();
 
-    // Aggiunge una route associando un percorso a una funzione handler.
     void addRoute(const std::string& path, HandlerFunction handler);
-    // Restituisce la funzione handler associata al percorso richiesto.
     HandlerFunction route(const std::string& path) const;
 
 private:
-    // Mappa che associa un percorso a una funzione handler.
     std::map<std::string, HandlerFunction> routes;
 };
 

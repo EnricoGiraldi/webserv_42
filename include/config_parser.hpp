@@ -3,29 +3,27 @@
 
 #include <string>
 #include <map>
-#include <fstream> // Necessario per std::ifstream
 
 class ConfigParser {
 public:
-    // Ritorna true se il file di configurazione è stato parsato con successo
+    ConfigParser();
+    ~ConfigParser();
+
+    // Restituisce true se il file di configurazione è stato parsato con successo
     bool parseConfigFile(const std::string& filePath);
 
-    // Restituisce le impostazioni globali
-    const std::map<std::string, std::string>& getGlobalSettings() const {
-        return globalSettings;
-    }
+    // Impostazioni globali (es. port, root, ecc.)
+    const std::map<std::string, std::string>& getGlobalSettings() const;
 
-    // Restituisce le configurazioni delle location
-    const std::map<std::string, std::map<std::string, std::string> >& getLocations() const {
-        return locations;
-    }
+    // Configurazioni per location: chiave = location, valore = mappa di impostazioni
+    const std::map<std::string, std::map<std::string, std::string> >& getLocations() const;
 
 private:
     std::map<std::string, std::string> globalSettings;
     std::map<std::string, std::map<std::string, std::string> > locations;
 
-    // Funzione helper per parsare un blocco di configurazione
-    void parseBlock(std::ifstream& configFile, const std::string& blockName);
+    void parseBlock(std::istream& configStream, const std::string& blockName);
+    std::string trim(const std::string& s);
 };
 
 #endif // CONFIG_PARSER_HPP

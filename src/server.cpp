@@ -1,7 +1,8 @@
 #include "server.hpp"
-#include "CGIHandler.hpp"   // Assicurati che il file si chiami esattamente "CGIHandler.hpp" nella cartella include
+#include "CGIHandler.hpp"
 #include "error_handler.hpp"
 #include "router.hpp"
+#include "request.hpp"
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <unistd.h>
@@ -13,27 +14,27 @@
 #include <stdexcept>
 #include <poll.h>
 #include <vector>
+#include <dirent.h>
+#include <sys/stat.h>
+#include <map>
 
-// Istanza globale del router per la gestione delle route.
+// Istanza globale del router
 Router router;
 
+// Funzione di esempio per il routing.
+std::string exampleHandler() {
+    return "<html><body><h1>Example Page</h1></body></html>";
+}
+
 Server::Server(const ConfigParser& configParser) : _isRunning(false) {
-    const std::map<std::string, std::string>& settings = configParser.getGlobalSettings();
-    const std::map<std::string, std::map<std::string, std::string> >& locations = configParser.getLocations();
+    // Usa le impostazioni globali del file di configurazione
+    const std::map<std::string, std::string>& globals = configParser.getGlobalSettings();
+    _port = globals.count("port") ? std::atoi(globals.at("port").c_str()) : 8080;
+    _documentRoot = globals.count("root") ? globals.at("root") : "www";
 
-    int port = 8080;
-    if (settings.find("port") != settings.end()) {
-        port = std::atoi(settings.at("port").c_str());
-    }
+    setupSocket(_port);
 
-    setupSocket(port);
-
-    for (std::map<std::string, std::map<std::string, std::string> >::const_iterator it = locations.begin(); 
-         it != locations.end(); ++it) {
-        const std::string& path = it->first;
-        router.addRoute(path, exampleHandler);
-    }
-
+    // Aggiunge una route di esempio
     router.addRoute("/example", exampleHandler);
 }
 
@@ -116,7 +117,7 @@ void Server::stop() {
 }
 
 void Server::handleClient(int clientSocket) {
-    char buffer[2048];
+    char buffer[4096];
     memset(buffer, 0, sizeof(buffer));
 
     ssize_t bytesRead = read(clientSocket, buffer, sizeof(buffer) - 1);
@@ -125,173 +126,184 @@ void Server::handleClient(int clientSocket) {
         return;
     }
 
-    logRequest(buffer);
-    std::string request(buffer);
+    std::string rawRequest(buffer);
+    Request request(rawRequest);
 
-    std::pair<std::string, std::string> requestInfo = parseRequest(request);
-    std::string method = requestInfo.first;
-    std::string path = requestInfo.second;
+    std::string method = request.getMethod();
+    std::string path = request.getPath();
+    std::string query = request.getQueryString();
+    std::string body = request.getBody();
 
     if (path.empty()) {
         sendErrorResponse(clientSocket, 400, "Invalid Request");
         return;
     }
 
-    if (method == "POST") {
-        size_t bodyStart = request.find("\r\n\r\n");
-        if (bodyStart == std::string::npos) {
-            sendErrorResponse(clientSocket, 400, "Bad Request");
-            return;
-        }
-        std::string body = request.substr(bodyStart + 4);
+    // Se il path inizia per /cgi-bin/, gestisce la richiesta CGI
+    if (path.find("/cgi-bin/") == 0) {
+        handleCGIRequest(clientSocket, path, query);
+        return;
+    }
 
-        std::ofstream logFile("post_data.log", std::ios::app);
-        if (logFile) {
-            logFile << "POST Data: " << body << std::endl;
-        }
-
-        std::string responseContent = "Received POST data: " + body;
-        sendResponse(clientSocket, 200, "text/plain", responseContent);
-    } 
-    else if (method == "GET") {
-        Router::HandlerFunction handler = router.route(path);
-        if (handler != NULL) {
-            sendResponse(clientSocket, 200, "text/html", handler());
-            return;
-        }
-
+    if (method == "GET") {
         serveStaticFile(clientSocket, path);
-    } 
-    else if (method == "DELETE") {
-        std::string fullPath = "www" + path; // Assicurati che il percorso sia corretto
-
-        // Controlla se il file esiste
+    } else if (method == "POST") {
+        handlePostRequest(clientSocket, body);
+    } else if (method == "DELETE") {
+        std::string fullPath = _documentRoot + path;
         if (access(fullPath.c_str(), F_OK) == -1) {
             sendErrorResponse(clientSocket, 404, "File Not Found");
             return;
         }
-
-        // Tenta di eliminare il file
         if (remove(fullPath.c_str()) == 0) {
             sendResponse(clientSocket, 200, "text/plain", "Resource deleted successfully");
         } else {
             sendErrorResponse(clientSocket, 500, "Internal Server Error: Unable to delete file");
         }
-    } 
-    else {
+    } else {
         sendErrorResponse(clientSocket, 405, "Method Not Allowed");
     }
 }
 
-std::pair<std::string, std::string> Server::parseRequest(const std::string& request) {
-    size_t methodEnd = request.find(" ");
-    if (methodEnd == std::string::npos) {
-        return std::make_pair("", "");
+void Server::handlePostRequest(int clientSocket, const std::string& body) {
+    // Log dei dati POST
+    std::ofstream logFile("post_data.log", std::ios::app);
+    if (logFile.is_open()) {
+        logFile << "POST data: " << body << std::endl;
+        logFile.close();
     }
 
-    std::string method = request.substr(0, methodEnd);
-    size_t pathStart = methodEnd + 1;
-    size_t pathEnd = request.find(" ", pathStart);
-    if (pathEnd == std::string::npos) {
-        return std::make_pair("", "");
-    }
+    std::string responseContent =
+        "<!DOCTYPE html>\n"
+        "<html>\n"
+        "<head><meta charset=\"UTF-8\"><title>Dati Ricevuti</title></head>\n"
+        "<body>\n"
+        "<h1>Dati Ricevuti</h1>\n"
+        "<p>I dati inviati sono: " + body + "</p>\n"
+        "<a href=\"/\">Torna alla Home</a>\n"
+        "</body>\n"
+        "</html>";
 
-    std::string path = request.substr(pathStart, pathEnd - pathStart);
-    if (path == "/") {
-        path = "/index.html";
-    }
-    return std::make_pair(method, path);
+    sendResponse(clientSocket, 200, "text/html", responseContent);
 }
 
-void Server::logRequest(const char* buffer) {
-    std::ofstream logFile("server.log", std::ios::app);
-    if (logFile) {
-        logFile << "Received request:\n" << buffer << "\n\n";
-    }
+void Server::handleCGIRequest(int clientSocket, const std::string& path, const std::string& query) {
+    // Assume che lo script CGI si trovi in _documentRoot + path
+    std::string scriptPath = _documentRoot + path;
+    CGIHandler cgiHandler;
+    // Ambiente minimo per il CGI (estendibile se necessario)
+    std::map<std::string, std::string> env;
+    env["REQUEST_METHOD"] = "GET"; // oppure POST se necessario
+    env["QUERY_STRING"] = query;
+    std::string cgiOutput = cgiHandler.executeCGI(scriptPath, query, env);
+    sendResponse(clientSocket, 200, "text/html", cgiOutput);
 }
 
 void Server::serveStaticFile(int clientSocket, const std::string& path) {
-    std::string filePath = "www" + path;
-    std::ifstream file(filePath.c_str());
-    if (file) {
-        std::string content((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
-        std::string mimeType = detectMimeType(path);
-        sendResponse(clientSocket, 200, mimeType, content);
-    } else {
-        sendErrorResponse(clientSocket, 404, "The requested file was not found.");
+    std::string filePath = _documentRoot + path;
+    struct stat path_stat;
+    if (stat(filePath.c_str(), &path_stat) == 0 && S_ISDIR(path_stat.st_mode)) {
+        std::string indexPath = filePath;
+        if (!indexPath.empty() && indexPath[indexPath.size() - 1] != '/')
+            indexPath += "/";
+        indexPath += "index.html";
+
+        if (stat(indexPath.c_str(), &path_stat) == 0) {
+            std::ifstream file(indexPath.c_str(), std::ios::binary);
+            if (file) {
+                std::ostringstream content;
+                content << file.rdbuf();
+                sendResponse(clientSocket, 200, "text/html", content.str());
+                return;
+            }
+        }
+        // Autoindex (directory listing)
+        std::ostringstream response;
+        response << "<html><body><h1>Index of " << path << "</h1><ul>";
+        DIR* dir = opendir(filePath.c_str());
+        if (dir) {
+            struct dirent* entry;
+            while ((entry = readdir(dir)) != NULL) {
+                std::string entryName(entry->d_name);
+                if (entryName == "." || entryName == "..")
+                    continue;
+                response << "<li><a href=\"" << entryName << "\">" << entryName << "</a></li>";
+            }
+            closedir(dir);
+        }
+        response << "</ul></body></html>";
+        sendResponse(clientSocket, 200, "text/html", response.str());
+        return;
     }
+
+    std::ifstream file(filePath.c_str(), std::ios::binary);
+    if (!file) {
+        sendErrorResponse(clientSocket, 404, "File Not Found");
+        return;
+    }
+    std::ostringstream content;
+    content << file.rdbuf();
+    std::string mimeType = detectMimeType(filePath);
+    sendResponse(clientSocket, 200, mimeType, content.str());
 }
 
 std::string Server::detectMimeType(const std::string& path) {
-    std::map<std::string, std::string> mimeTypes;
-    mimeTypes[".html"] = "text/html";
-    mimeTypes[".css"] = "text/css";
-    mimeTypes[".js"] = "application/javascript";
-    mimeTypes[".png"] = "image/png";
-    mimeTypes[".jpg"] = "image/jpeg";
-    mimeTypes[".gif"] = "image/gif";
-    mimeTypes[".ico"] = "image/x-icon";
-    mimeTypes[".json"] = "application/json";
-    mimeTypes[".xml"] = "application/xml";
-    mimeTypes[".txt"] = "text/plain";
-
-    size_t dotPos = path.rfind('.');
+    size_t dotPos = path.find_last_of(".");
     if (dotPos != std::string::npos) {
-        std::string extension = path.substr(dotPos);
-        std::map<std::string, std::string>::iterator it = mimeTypes.find(extension);
-        if (it != mimeTypes.end()) {
-            return it->second;
-        }
+        std::string ext = path.substr(dotPos + 1);
+        if (ext == "html" || ext == "htm")
+            return "text/html";
+        if (ext == "css")
+            return "text/css";
+        if (ext == "js")
+            return "application/javascript";
+        if (ext == "png")
+            return "image/png";
+        if (ext == "jpg" || ext == "jpeg")
+            return "image/jpeg";
+        if (ext == "gif")
+            return "image/gif";
     }
-    return "application/octet-stream";
-}
-
-void Server::handleCGIRequest(int clientSocket, const std::string& path) {
-    std::map<std::string, std::string> env;
-    env["QUERY_STRING"] = "";
-    env["SCRIPT_NAME"] = path;
-    env["REQUEST_METHOD"] = "GET";
-    env["SERVER_PROTOCOL"] = "HTTP/1.1";
-
-    try {
-        CGIHandler cgi;
-        std::string cgiOutput = cgi.executeCGI("www" + path, "", env);
-        sendResponse(clientSocket, 200, "text/html", cgiOutput);
-    } catch (const std::exception& e) {
-        sendErrorResponse(clientSocket, 500, e.what());
-    }
+    return "text/plain";
 }
 
 void Server::sendResponse(int clientSocket, int statusCode, const std::string& contentType, const std::string& content) {
     std::ostringstream response;
-    response << "HTTP/1.1 " << statusCode << " " << getStatusMessage(statusCode) << "\r\n"
-             << "Content-Length: " << content.size() << "\r\n"
-             << "Content-Type: " << contentType << "\r\n"
-             << "Connection: close\r\n"
-             << "\r\n"
-             << content;
-
+    response << "HTTP/1.1 " << statusCode << " ";
+    switch (statusCode) {
+        case 200: response << "OK"; break;
+        case 201: response << "Created"; break;
+        case 400: response << "Bad Request"; break;
+        case 403: response << "Forbidden"; break;
+        case 404: response << "Not Found"; break;
+        case 405: response << "Method Not Allowed"; break;
+        case 500: response << "Internal Server Error"; break;
+        default:  response << "Unknown"; break;
+    }
+    response << "\r\n";
+    response << "Content-Length: " << content.size() << "\r\n";
+    response << "Content-Type: " << contentType << "\r\n";
+    response << "Connection: close\r\n";
+    response << "\r\n" << content;
     std::string responseStr = response.str();
     send(clientSocket, responseStr.c_str(), responseStr.size(), 0);
 }
 
-std::string Server::getStatusMessage(int statusCode) {
-    switch (statusCode) {
-        case 200: return "OK";
-        case 400: return "Bad Request";
-        case 404: return "Not Found";
-        case 405: return "Method Not Allowed";
-        case 500: return "Internal Server Error";
-        default:  return "Unknown Status";
-    }
-}
-
 void Server::sendErrorResponse(int clientSocket, int statusCode, const std::string& message) {
-    ErrorHandler errorHandler;
-    std::string errorResponse = errorHandler.generateErrorResponse(statusCode, message);
-    sendResponse(clientSocket, statusCode, "text/html", errorResponse);
+    std::ostringstream response;
+    response << "<html><body><h1>Error " << statusCode << "</h1><p>" << message << "</p></body></html>";
+    sendResponse(clientSocket, statusCode, "text/html", response.str());
 }
 
-std::string exampleHandler() {
-    return "<html><body><h1>Example Page</h1></body></html>";
+std::pair<std::string, std::string> Server::parseRequest(const std::string& request) {
+    size_t methodEnd = request.find(" ");
+    if (methodEnd == std::string::npos)
+        return std::make_pair("", "");
+    std::string method = request.substr(0, methodEnd);
+    size_t pathStart = methodEnd + 1;
+    size_t pathEnd = request.find(" ", pathStart);
+    if (pathEnd == std::string::npos)
+        return std::make_pair("", "");
+    std::string path = request.substr(pathStart, pathEnd - pathStart);
+    return std::make_pair(method, path);
 }

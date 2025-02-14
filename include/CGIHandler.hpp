@@ -9,6 +9,7 @@ public:
     CGIHandler();
     ~CGIHandler();
 
+    // Esegue lo script CGI passando anche le variabili d'ambiente
     std::string executeCGI(const std::string& scriptPath, const std::string& queryString,
                            const std::map<std::string, std::string>& env);
 };
