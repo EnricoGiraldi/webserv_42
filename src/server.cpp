@@ -311,7 +311,7 @@ void Server::serveStaticFile(int clientSocket, const std::string& path, bool isH
 std::string Server::detectMimeType(const std::string& path) {
     size_t dotPos = path.find_last_of(".");
     if (dotPos != std::string::npos) {
-        std::string ext = path.substr(dotPos + 1);
+        std::string ext = path.substr(dotPos + 1); // Dichiarazione di "ext"
         if (ext == "html" || ext == "htm")
             return "text/html";
         if (ext == "css")
@@ -327,6 +327,7 @@ std::string Server::detectMimeType(const std::string& path) {
     }
     return "text/plain";
 }
+
 
 // Invia la risposta completa usando la funzione helper send_all
 void Server::sendResponse(int clientSocket, int statusCode, const std::string& contentType,

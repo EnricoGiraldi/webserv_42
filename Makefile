@@ -23,7 +23,7 @@ OBJ_TOP = $(patsubst %.cpp,$(OBJ_DIR)/%.o,$(TOP_SOURCES))
 OBJECTS = $(OBJ_SRC) $(OBJ_TOP)
 
 CC = c++
-CFLAGS = -Wall -Wextra -Werror -std=c++98 -I$(INC_DIR)
+CFLAGS = -Wall -Wextra -Werror -std=c++98 -g -I$(INC_DIR)
 
 all: $(NAME)
 
